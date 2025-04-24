@@ -1,3 +1,5 @@
+import java.util.Arrays;
+
 public class Kernel extends Process implements Device{
 
     private final Scheduler scheduler = new Scheduler(this);
@@ -5,8 +7,15 @@ public class Kernel extends Process implements Device{
     private final Hardware hardware = new Hardware();
     private final boolean[] memoryUsed = new boolean[Hardware.PAGE_SIZE];
 
+    private int currentPageNumber;
+    private int swapFileID;
     @Override
     public void main() {
+        //Happens on StartUp
+        swapFileID = vfs.Open("file swapFile");
+        System.out.println("Swap File ID: " + swapFileID);
+        currentPageNumber = 0;
+
         while(true)
         {
             //Sleep is here to wait for the currentlyRunning process to be stopped by the OS to not cause bugs
@@ -149,39 +158,128 @@ public class Kernel extends Process implements Device{
     public void GetMapping(int virtualPageNumber)
     {
         PCB current = scheduler.currentlyRunningPCB;
-        int physicalPage = current.pageTable[virtualPageNumber];
-        if(physicalPage == -1)
+
+        // If memory has not been allocated
+        if(current.pageTable[virtualPageNumber] == null)
         {
             System.out.println("Segmentation Fault on " + scheduler.currentlyRunning.getClass() + "!");
             FreeAllMemory();
             scheduler.SwitchProcess(true, false);
+            return;
         }
-        else
-            hardware.setRandomTLB(virtualPageNumber, physicalPage);
+
+        int physicalPage = current.pageTable[virtualPageNumber].physicalPageNumber;
+
+        // If the page number is not found
+        if(physicalPage == -1 && current.pageTable[virtualPageNumber].onDiskPageNumber != -1)
+        {
+            physicalPage = PageSwap();
+            System.out.println("PageSwap returned: " + physicalPage);
+            current.pageTable[virtualPageNumber].physicalPageNumber = physicalPage;
+            ReadFromSwapFile(current, virtualPageNumber);
+        }
+        else if(physicalPage == -1)
+        {
+            int freeMemoryLocation = getFreeMemoryLocation();
+            if(freeMemoryLocation != -1)// If the page number is not found and the page number is not on disk.
+            {
+                physicalPage = freeMemoryLocation;
+            }
+            else // If the page number is not found, the page number is not on disk and out of free memory.
+                physicalPage = PageSwap();
+            current.pageTable[virtualPageNumber].physicalPageNumber = physicalPage;
+        }
+        System.out.println("Mapping aquired: ");
+        for(int i = 0; i < current.pageTable.length; i ++)
+        {
+            if(current.pageTable[i] != null)
+                System.out.print(current.pageTable[i].physicalPageNumber + ", ");
+            else
+                System.out.print("/, ");
+        }
+        System.out.println();
+        hardware.setRandomTLB(virtualPageNumber, physicalPage);
+    }
+
+    private int PageSwap() {
+        while(true)
+        {
+            PCB randomPCB = scheduler.GetRandomProcess();
+            for(int i = 0; i < randomPCB.pageTable.length; i++)
+            {
+
+                if(randomPCB.pageTable[i] != null) {
+                    // Finds physical page
+                    if(randomPCB.pageTable[i].physicalPageNumber != -1)
+                    {
+                        // Writes bytes to swap file if they are not already in
+                        if(randomPCB.pageTable[i].onDiskPageNumber == -1)
+                        {
+                            WriteToSwapFile(randomPCB, i);
+                        }
+
+                        int pageNumber = randomPCB.pageTable[i].physicalPageNumber;
+                        randomPCB.pageTable[i].physicalPageNumber = -1;
+                        return pageNumber;
+                    }
+                }
+            }
+        }
+    }
+
+    private void WriteToSwapFile(PCB pcb, int virtualPageNumber)
+    {
+        vfs.Seek(swapFileID,currentPageNumber);
+        byte[] bytesToWrite = new byte[Hardware.PAGE_SIZE];
+        int offset = 0;
+        for(int j = currentPageNumber; j < currentPageNumber + Hardware.PAGE_SIZE; j ++)
+        {
+            bytesToWrite[offset] = Hardware.memory[pcb.pageTable[virtualPageNumber].physicalPageNumber + offset];
+            offset++;
+        }
+        pcb.pageTable[virtualPageNumber].onDiskPageNumber = currentPageNumber;
+        System.out.println("Process class: " + pcb.up.getClass() + " has disk page: " + currentPageNumber);
+
+        vfs.Write(swapFileID, bytesToWrite);
+        System.out.println("Written to Swap File: " + Arrays.toString(bytesToWrite));
+
+        currentPageNumber += Hardware.PAGE_SIZE;
+        System.out.println("New Current Page Number: " + currentPageNumber);
+    }
+
+    private void ReadFromSwapFile(PCB pcb, int virtualPageNumber)
+    {
+        vfs.Seek(swapFileID,pcb.pageTable[virtualPageNumber].onDiskPageNumber);
+        byte[] bytesToWrite = vfs.Read(swapFileID,Hardware.PAGE_SIZE);
+        for(int i = 0; i < bytesToWrite.length; i++)
+        {
+            Hardware.memory[pcb.pageTable[virtualPageNumber].physicalPageNumber + i] = bytesToWrite[i];
+        }
     }
 
     public int AllocateMemory(int size) // – returns the start virtual address
     {
         int pageAmount = size/Hardware.PAGE_SIZE;
         PCB current = scheduler.currentlyRunningPCB;
+
         int startingIndex = current.spaceToAllocate(size);
         if(startingIndex != -1)
         {
             for(int i = startingIndex; i < startingIndex + pageAmount; i++)
             {
-                int memoryLocation = getFreeMemoryLocation();
-                if(memoryLocation != -1)
-                    current.pageTable[i] = memoryLocation;
-                else
-                    return -1;
+                current.pageTable[i] = new VirtualToPhysicalMapping();
             }
             for(int i = 0; i < current.pageTable.length; i ++)
             {
-                System.out.print(current.pageTable[i] + ", ");
+                if(current.pageTable[i] != null)
+                    System.out.print(current.pageTable[i].physicalPageNumber + ", ");
+                else
+                    System.out.print("/, ");
             }
             System.out.println();
             return startingIndex * Hardware.PAGE_SIZE;
         }
+        System.out.println("Allocation for this process failed.");
         return -1;
     }
 
@@ -190,29 +288,34 @@ public class Kernel extends Process implements Device{
         int page = pointer/Hardware.PAGE_SIZE;
         PCB current = scheduler.currentlyRunningPCB;
         int pageAmount = size/Hardware.PAGE_SIZE;
-        for(int i = page; i < page + pageAmount; i++)
+        for(int i = page; i < page + pageAmount; i ++)
         {
-            if(current.pageTable[i] != -1)
+            if(current.pageTable[i] != null)
             {
-                if(memoryUsed[current.pageTable[i]])
-                    memoryUsed[current.pageTable[i]] = false;
-                else
-                    return false;
-                if(!hardware.freeMemory(current.pageTable[i]))
+                if(current.pageTable[i].physicalPageNumber == -1)
                 {
-                    System.out.println("Problem with freeing physical memory");
-                    return false;
+                    current.pageTable[i] = null;
                 }
-                System.out.println("Virtual Memory Freed: " + current.pageTable[i]);
-                current.pageTable[i] = -1;
-
+                else
+                {
+                    if(memoryUsed[current.pageTable[i].physicalPageNumber])
+                        memoryUsed[current.pageTable[i].physicalPageNumber] = false;
+                    else
+                        return false;
+                    if(!hardware.freeMemory(current.pageTable[i].physicalPageNumber))
+                    {
+                        System.out.println("Problem with freeing physical memory");
+                        return false;
+                    }
+                    System.out.println("Virtual Memory Freed: " + current.pageTable[i].physicalPageNumber);
+                    current.pageTable[i] = null;
+                }
             }
             else
             {
                 System.out.println("Problem with freeing virtual memory");
                 return false;
             }
-
         }
         return true;
     }
@@ -224,7 +327,7 @@ public class Kernel extends Process implements Device{
             if(!memoryUsed[i])
             {
                 memoryUsed[i] = true;
-                System.out.println("Memory Usage Number: " + i);
+                System.out.println("Free Memory Location Found: " + i);
                 return i;
             }
         }
@@ -236,14 +339,18 @@ public class Kernel extends Process implements Device{
         PCB current = scheduler.currentlyRunningPCB;
         for(int i = 0; i < current.pageTable.length; i++)
         {
-            if(current.pageTable[i] != -1)
+            if(current.pageTable[i] != null)
             {
                 FreeMemory(i * Hardware.PAGE_SIZE, Hardware.PAGE_SIZE);
             }
         }
         for(int i = 0; i < current.pageTable.length; i ++)
         {
-            System.out.print(current.pageTable[i] + ", ");
+            if(current.pageTable[i] != null)
+                System.out.print(current.pageTable[i].physicalPageNumber + ", ");
+            else
+                System.out.print("/, ");
         }
+        System.out.println();
     }
 }

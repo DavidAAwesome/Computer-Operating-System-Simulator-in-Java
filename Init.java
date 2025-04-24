@@ -5,7 +5,7 @@ public class Init extends UserlandProcess{
     @Override
     public void main()
     {
-        // Processes commented for the sake of focusing testing to memory
+        // Processes commented for the sake of focusing testing to filled memory
 //        OS.CreateProcess(new HelloWorld());
 //        OS.CreateProcess(new GoodbyeWorld());
 //        OS.CreateProcess(new RealTimeNoSleepProcess(), OS.Priority.RealTime);
@@ -18,9 +18,23 @@ public class Init extends UserlandProcess{
 //        OS.CreateProcess(new Pong());
 //        OS.CreateProcess(new MessengerTestProcess());
 //        OS.CreateProcess(new MessengerTestProcess2());
-        OS.CreateProcess(new MemoryTestProcess());
-        OS.CreateProcess(new MemoryCooperateProcess());
-        OS.CreateProcess(new MemoryCooperateProcess2());
+//        OS.CreateProcess(new MemoryTestProcess());
+//        OS.CreateProcess(new MemoryCooperateProcess());
+//        OS.CreateProcess(new MemoryCooperateProcess2());
+
+        // 11 Filled Memory Cooperate Processes are made to test when the memory is filled
+        OS.CreateProcess(new FilledMemoryCooperateProcess());
+        OS.CreateProcess(new FilledMemoryCooperateProcess());
+        OS.CreateProcess(new FilledMemoryCooperateProcess());
+        OS.CreateProcess(new FilledMemoryCooperateProcess());
+        OS.CreateProcess(new FilledMemoryCooperateProcess());
+        OS.CreateProcess(new FilledMemoryCooperateProcess());
+        OS.CreateProcess(new FilledMemoryCooperateProcess());
+        OS.CreateProcess(new FilledMemoryCooperateProcess());
+        OS.CreateProcess(new FilledMemoryCooperateProcess());
+        OS.CreateProcess(new FilledMemoryCooperateProcess());
+        OS.CreateProcess(new FilledMemoryCooperateProcess());
+
         OS.Exit();
     }
 }

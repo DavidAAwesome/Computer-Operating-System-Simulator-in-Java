@@ -16,7 +16,7 @@ public class PCB {
     public String name;
     LinkedList<KernelMessage> MessageQueue = new LinkedList<>();
 
-    public int[] pageTable = new int[100];
+    public VirtualToPhysicalMapping[] pageTable = new VirtualToPhysicalMapping[100];
 
     public PCB(UserlandProcess up) /* creates thread, sets pid */
     {
@@ -24,7 +24,7 @@ public class PCB {
         pid = nextpid++;
         name = up.getClass().getSimpleName();
         Arrays.fill(devices, -1);
-        Arrays.fill(pageTable, -1);
+        //Arrays.fill(pageTable, -1);
     }
     public void stop() /* calls userlandprocess’ stop. Loops with Thread.sleep() until ulp.isStopped() is true.  */
     {
@@ -54,7 +54,7 @@ public class PCB {
         for (int i = 0; i < pageTable.length - pageAmount; i++) {
             boolean enoughSpace = true;
             for (int j = i; j < i + pageAmount; j++) {
-                if (pageTable[j] != -1)
+                if (pageTable[j] != null)
                     enoughSpace = false;
             }
             if (enoughSpace)
@@ -63,6 +63,20 @@ public class PCB {
                 return i;
             }
 
+        }
+        if(pageAmount == 100)
+        {
+            boolean enoughSpace = true;
+            for (int i = 0; i < pageTable.length; i++)
+            {
+                if (pageTable[i] != null)
+                    enoughSpace = false;
+            }
+            if (enoughSpace)
+            {
+                System.out.println("Space To Allocate starting index: " + 0);
+                return 0;
+            }
         }
         return -1;// Not enough space to allocate page number
     }

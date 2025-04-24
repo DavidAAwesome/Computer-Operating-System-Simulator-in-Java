@@ -5,9 +5,10 @@ public class Hardware {
     public static final int PAGE_SIZE = 1024;
     public static final int MEMORY_SIZE = PAGE_SIZE * PAGE_SIZE;
 
-    private static final byte[] memory = new byte[MEMORY_SIZE]; //1MB of physical data
+    public static final byte[] memory = new byte[MEMORY_SIZE]; //1MB of physical data
     private static final int[][] TLB = {{-1,-1},{-1,-1}};
     private static final Random random = new Random();
+
 
     public static byte Read(int address)
     {

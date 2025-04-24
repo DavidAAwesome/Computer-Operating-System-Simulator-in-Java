@@ -229,6 +229,32 @@ public class Scheduler {
         return null;
     }
 
+    public PCB GetRandomProcess()
+    {
+        int entryIndex;
+        LinkedList<PCB> chosenList;
+
+        do
+        {
+            entryIndex = random.nextInt(3);
+            switch(entryIndex)
+            {
+                case 0:
+                    chosenList = realTimeQueue;
+                    break;
+                case 1:
+                    chosenList = interactiveQueue;
+                    break;
+                default:
+                    chosenList = backgroundQueue;
+                    break;
+            }
+        }while(chosenList.isEmpty());
+
+        entryIndex = random.nextInt(chosenList.size());
+        return chosenList.get(entryIndex);
+    }
+
 
 
 
